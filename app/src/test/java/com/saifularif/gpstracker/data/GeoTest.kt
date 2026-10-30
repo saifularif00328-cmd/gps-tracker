@@ -87,4 +87,9 @@ class GeoTest {
         val leave = g.update(listOf(home), -6.2 + 0.0015, 106.8) // ~167 m
         assertEquals(1, leave.size); assertTrue(!leave[0].entered)
     }
+
+    @Test fun chatId_isSymmetricAndSorted() {
+        assertEquals(chatIdOf("bob", "alice"), chatIdOf("alice", "bob"))
+        assertEquals("alice_bob", chatIdOf("bob", "alice"))
+    }
 }

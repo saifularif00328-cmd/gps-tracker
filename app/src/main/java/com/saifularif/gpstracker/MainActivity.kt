@@ -52,6 +52,7 @@ import com.saifularif.gpstracker.service.LocationService
 import com.saifularif.gpstracker.ui.auth.AuthScreen
 import com.saifularif.gpstracker.ui.follow.FollowScreen
 import com.saifularif.gpstracker.ui.friends.FriendsScreen
+import com.saifularif.gpstracker.ui.chat.ChatScreen
 import com.saifularif.gpstracker.ui.guide.GuideDialog
 import com.saifularif.gpstracker.ui.guide.HintDialog
 import com.saifularif.gpstracker.ui.history.HistoryScreen
@@ -69,7 +70,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
         setContent { GpsTrackerTheme { Root(vm) } }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_SOS, false) == true) vm.sosPrompt.value = true
+    }
+
+    companion object {
+        const val EXTRA_SOS = "sos"
     }
 }
 
@@ -127,6 +143,9 @@ private fun MainScaffold(vm: AppViewModel) {
     val places by vm.places.collectAsState()
     val trips by vm.trips.collectAsState()
     val historyUid by vm.historyUid.collectAsState()
+    val chatWith by vm.chatWith.collectAsState()
+    val messages by vm.messages.collectAsState()
+    val sosPrompt by vm.sosPrompt.collectAsState()
     val guideHidden by vm.prefs.guideHiddenFlow.collectAsState(initial = true)
     val followHintSeen by vm.prefs.followHintFlow.collectAsState(initial = true)
     val friendsHintSeen by vm.prefs.friendsHintFlow.collectAsState(initial = true)
@@ -198,6 +217,30 @@ private fun MainScaffold(vm: AppViewModel) {
         }
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
+    fun sendSos() {
+        if (!fineOk) { vm.toast("Izin lokasi diperlukan untuk SOS"); return }
+        com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
+            .getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { loc ->
+                if (loc != null) vm.sendSos(loc.latitude, loc.longitude)
+                else vm.toast("Lokasi belum tersedia. Coba lagi di tempat terbuka.")
+            }
+            .addOnFailureListener { vm.toast("Gagal mengambil lokasi untuk SOS") }
+    }
+
+    if (sosPrompt) AlertDialog(
+        onDismissRequest = { vm.sosPrompt.value = false },
+        title = { Text("Kirim SOS?") },
+        text = { Text("Semua teman yang Anda setujui akan menerima peringatan darurat beserta lokasi Anda saat ini, walau berbagi lokasi sedang dimatikan.") },
+        confirmButton = {
+            TextButton(onClick = { vm.sosPrompt.value = false; sendSos() }) {
+                Text("Kirim SOS", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = { vm.sosPrompt.value = false }) { Text("Batal") } },
+    )
+
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = Color.White) {
@@ -231,13 +274,30 @@ private fun MainScaffold(vm: AppViewModel) {
             when (tab) {
                 Tab.MAP ->
                     if (followUid != null) FollowScreen(friends, followUid, onPick = vm::follow)
-                    else MapScreen(friends, onFollow = { vm.follow(it.uid) }, onOpenGuide = { guideOpen = true })
-                Tab.FRIENDS -> FriendsScreen(
-                    me, friends,
-                    onInvite = vm::invite, onAccept = vm::accept, onRemove = vm::removeFriend,
-                    onFollow = { vm.follow(it.uid); tab = Tab.MAP },
-                    onFavorite = vm::setFavorite, onGroup = vm::setGroup,
-                )
+                    else MapScreen(friends, onFollow = { vm.follow(it.uid) }, onOpenGuide = { guideOpen = true }, onSos = { vm.sosPrompt.value = true })
+                Tab.FRIENDS -> {
+                    val chatFriend = friends.firstOrNull { it.uid == chatWith && it.status == "accepted" }
+                    if (chatFriend != null) {
+                        ChatScreen(
+                            friend = chatFriend,
+                            myUid = me?.uid ?: "",
+                            messages = messages,
+                            onSendText = vm::sendText,
+                            onSendVoice = vm::sendVoice,
+                            onPing = vm::sendPing,
+                            onBack = { vm.openChat(null) },
+                            onMessage = vm::toast,
+                        )
+                    } else {
+                        FriendsScreen(
+                            me, friends,
+                            onInvite = vm::invite, onAccept = vm::accept, onRemove = vm::removeFriend,
+                            onFollow = { vm.follow(it.uid); tab = Tab.MAP },
+                            onFavorite = vm::setFavorite, onGroup = vm::setGroup,
+                            onChat = { vm.openChat(it.uid) }, onPing = vm::pingFriend,
+                        )
+                    }
+                }
                 Tab.HISTORY -> HistoryScreen(friends, trips, historyUid, onSelect = vm::viewHistoryOf)
                 Tab.PLACES -> PlacesScreen(
                     places,

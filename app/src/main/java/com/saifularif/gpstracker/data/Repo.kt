@@ -243,15 +243,22 @@ object Repo {
 
     // ---- Peristiwa (tiba/pergi/baterai rendah) ----
 
-    suspend fun publishEvent(uid: String, fromName: String, type: String, placeName: String) {
-        db.collection("users").document(uid).collection("events").add(
-            mapOf(
-                "type" to type,
-                "placeName" to placeName,
-                "fromName" to fromName,
-                "ts" to System.currentTimeMillis(),
-            )
-        ).await()
+    suspend fun publishEvent(
+        uid: String,
+        fromName: String,
+        type: String,
+        placeName: String,
+        lat: Double? = null,
+        lng: Double? = null,
+    ) {
+        val data = hashMapOf<String, Any>(
+            "type" to type,
+            "placeName" to placeName,
+            "fromName" to fromName,
+            "ts" to System.currentTimeMillis(),
+        )
+        if (lat != null && lng != null) { data["lat"] = lat; data["lng"] = lng }
+        db.collection("users").document(uid).collection("events").add(data).await()
     }
 
     fun events(friendUid: String): Flow<List<FriendEvent>> = callbackFlow {
@@ -267,6 +274,8 @@ object Repo {
                         type = d.getString("type") ?: "",
                         placeName = d.getString("placeName") ?: "",
                         ts = d.getLong("ts") ?: 0L,
+                        lat = d.getDouble("lat"),
+                        lng = d.getDouble("lng"),
                     )
                 } ?: emptyList())
             }
@@ -282,5 +291,85 @@ object Repo {
         val events = db.collection("users").document(uid).collection("events")
             .whereLessThan("ts", now - 2 * 24 * 3_600_000L).get().await()
         events.documents.forEach { it.reference.delete() }
+    }
+
+    // ---- Chat, pesan suara, ping ----
+
+    fun messages(chatId: String): Flow<List<Message>> = callbackFlow {
+        val reg = db.collection("chats").document(chatId).collection("messages")
+            .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(50)
+            .addSnapshotListener { s, _ ->
+                trySend(s?.documents?.map { d ->
+                    Message(
+                        id = d.id,
+                        from = d.getString("from") ?: "",
+                        type = d.getString("type") ?: "text",
+                        text = d.getString("text") ?: "",
+                        audio = d.getString("audio"),
+                        durMs = d.getLong("durMs") ?: 0L,
+                        ts = d.getLong("ts") ?: 0L,
+                    )
+                } ?: emptyList())
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun sendMessage(
+        chatId: String,
+        from: String,
+        type: String,
+        text: String = "",
+        audio: String? = null,
+        durMs: Long = 0L,
+    ) {
+        val data = hashMapOf<String, Any>(
+            "from" to from,
+            "type" to type,
+            "text" to text,
+            "durMs" to durMs,
+            "ts" to System.currentTimeMillis(),
+        )
+        if (audio != null) data["audio"] = audio
+        db.collection("chats").document(chatId).collection("messages").add(data).await()
+    }
+
+    /** Hapus pesan lama (> 7 hari) milik sendiri; pesan teman dilewati karena aturan menolaknya. */
+    suspend fun pruneChat(chatId: String, meUid: String) {
+        val cutoff = System.currentTimeMillis() - 7 * 24 * 3_600_000L
+        val old = db.collection("chats").document(chatId).collection("messages")
+            .whereLessThan("ts", cutoff).get().await()
+        old.documents.filter { it.getString("from") == meUid }.forEach { it.reference.delete() }
+    }
+
+    // ---- Widget: status teman favorit (sekali ambil) ----
+
+    suspend fun favoriteStatuses(limit: Int = 3): List<Pair<String, String>> {
+        val me = uid ?: return emptyList()
+        val friends = db.collection("users").document(me).collection("friends")
+            .whereEqualTo("status", "accepted").whereEqualTo("favorite", true)
+            .limit(limit.toLong()).get().await()
+        return friends.documents.map { f ->
+            val name = f.getString("name") ?: "Teman"
+            val loc = runCatching { db.collection("locations").document(f.id).get().await() }.getOrNull()
+            val friend = Friend(
+                uid = f.id, name = name, status = "accepted",
+                lat = loc?.getDouble("lat"), lng = loc?.getDouble("lng"),
+                speedMps = loc?.getDouble("speed") ?: 0.0,
+                updatedAt = loc?.getLong("updatedAt") ?: 0L,
+                stillSince = loc?.getLong("stillSince") ?: 0L,
+            )
+            name to friend.statusText()
+        }
+    }
+
+    suspend fun sharingStatus(): String? {
+        val me = uid ?: return null
+        val p = getProfile(me) ?: return null
+        return when {
+            !p.shareEnabled -> "Berbagi lokasi: mati"
+            p.pausedUntil > System.currentTimeMillis() -> "Berbagi lokasi: dijeda"
+            else -> "Berbagi lokasi: aktif"
+        }
     }
 }

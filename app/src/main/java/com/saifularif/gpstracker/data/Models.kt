@@ -83,4 +83,19 @@ data class FriendEvent(
     val type: String, // arrive | leave | battery_low
     val placeName: String,
     val ts: Long,
+    val lat: Double? = null,
+    val lng: Double? = null,
 )
+
+data class Message(
+    val id: String,
+    val from: String,
+    val type: String, // text | voice | ping
+    val text: String,
+    val audio: String?, // base64 (hanya untuk voice)
+    val durMs: Long,
+    val ts: Long,
+)
+
+/** ID chat simetris: dua uid diurutkan lalu digabung dengan "_". */
+fun chatIdOf(a: String, b: String): String = listOf(a, b).sorted().joinToString("_")

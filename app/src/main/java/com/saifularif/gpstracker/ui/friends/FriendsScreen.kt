@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -54,6 +56,8 @@ fun FriendsScreen(
     onFollow: (Friend) -> Unit,
     onFavorite: (Friend, Boolean) -> Unit,
     onGroup: (Friend, String) -> Unit,
+    onChat: (Friend) -> Unit,
+    onPing: (Friend) -> Unit,
 ) {
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
@@ -126,6 +130,8 @@ fun FriendsScreen(
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) { FriendRowHeader(f) }
+                        IconButton(onClick = { onChat(f) }) { Icon(Icons.Default.Chat, "Chat", tint = Green) }
+                        IconButton(onClick = { onPing(f) }) { Icon(Icons.Default.MyLocation, "Ping lokasi", tint = Green) }
                         IconButton(onClick = { onFavorite(f, !f.favorite) }) {
                             Icon(
                                 if (f.favorite) Icons.Default.Star else Icons.Default.StarBorder,

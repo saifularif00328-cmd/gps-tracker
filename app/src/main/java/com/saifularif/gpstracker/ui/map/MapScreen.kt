@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -44,6 +45,7 @@ fun MapScreen(
     friends: List<Friend>,
     onFollow: (Friend) -> Unit,
     onOpenGuide: () -> Unit,
+    onSos: () -> Unit,
 ) {
     var filter by remember { mutableStateOf("all") }
     var selectedUid by remember { mutableStateOf<String?>(null) }
@@ -79,7 +81,10 @@ fun MapScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text("GPS-Tracker", style = MaterialTheme.typography.titleMedium, color = Green)
-                    IconButton(onClick = onOpenGuide) { Icon(Icons.Default.Info, "Petunjuk", tint = Green) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onSos) { Icon(Icons.Default.Warning, "SOS", tint = Color(0xFFDC2626)) }
+                        IconButton(onClick = onOpenGuide) { Icon(Icons.Default.Info, "Petunjuk", tint = Green) }
+                    }
                 }
             }
             val chips = listOf("all" to "Semua", "moving" to "Bergerak", "still" to "Diam", "fav" to "Favorit") +

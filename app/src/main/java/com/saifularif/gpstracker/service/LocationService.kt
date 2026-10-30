@@ -8,7 +8,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.annotation.SuppressLint
 import android.location.Location
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
@@ -21,12 +23,15 @@ import com.google.android.gms.location.Priority
 import com.saifularif.gpstracker.GpsTrackerApp
 import com.saifularif.gpstracker.MainActivity
 import com.saifularif.gpstracker.data.Friend
+import com.saifularif.gpstracker.data.Message
+import com.saifularif.gpstracker.data.chatIdOf
 import com.saifularif.gpstracker.data.FriendEvent
 import com.saifularif.gpstracker.data.GeofenceTracker
 import com.saifularif.gpstracker.data.Place
 import com.saifularif.gpstracker.data.Profile
 import com.saifularif.gpstracker.data.Repo
 import com.saifularif.gpstracker.data.TripDetector
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,9 +66,12 @@ class LocationService : Service() {
     private var batteryLowSent = false
 
     private var resumeJob: Job? = null
+    private val ready = CompletableDeferred<Unit>()
     private val friendJobs = HashMap<String, Job>()
     private val notified = HashSet<String>()
     @Volatile private var eventsSeenTs = 0L
+    @Volatile private var msgSeenTs = 0L
+    private val friendNames = HashMap<String, String>()
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -92,6 +100,9 @@ class LocationService : Service() {
         scope.launch {
             eventsSeenTs = prefs.eventsSeenFlow.first().takeIf { it > 0 }
                 ?: System.currentTimeMillis().also { prefs.setEventsSeen(it) }
+            msgSeenTs = prefs.msgSeenFlow.first().takeIf { it > 0 }
+                ?: System.currentTimeMillis().also { prefs.setMsgSeen(it) }
+            ready.complete(Unit)
             runCatching { Repo.pruneOld(uid) }
         }
         scope.launch {
@@ -112,11 +123,18 @@ class LocationService : Service() {
         }
         scope.launch { Repo.places(uid).collect { places = it } }
         scope.launch {
+            ready.await() // penanda "sudah dilihat" harus terbaca dulu agar kabar lama tidak dinotifikasi ulang
             Repo.friends(uid).collect { list ->
-                val accepted = list.filter { it.status == "accepted" }.map { it.uid }.toSet()
+                val acceptedList = list.filter { it.status == "accepted" }
+                friendNames.clear()
+                acceptedList.forEach { friendNames[it.uid] = it.name }
+                val accepted = acceptedList.map { it.uid }.toSet()
                 friendJobs.keys.filter { it !in accepted }.forEach { friendJobs.remove(it)?.cancel() }
                 accepted.filter { it !in friendJobs }.forEach { fid ->
-                    friendJobs[fid] = scope.launch { Repo.events(fid).collect(::onFriendEvents) }
+                    friendJobs[fid] = scope.launch {
+                        launch { Repo.events(fid).collect(::onFriendEvents) }
+                        launch { Repo.messages(chatIdOf(uid, fid)).collect { onMessages(fid, it) } }
+                    }
                 }
             }
         }
@@ -170,24 +188,35 @@ class LocationService : Service() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_FRIENDS, "Kabar teman", NotificationManager.IMPORTANCE_DEFAULT)
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_SOS, "SOS darurat", NotificationManager.IMPORTANCE_HIGH)
+        )
         var newest = eventsSeenTs
         events.sortedBy { it.ts }.forEach { e ->
             if (e.ts <= eventsSeenTs || !notified.add(e.id)) return@forEach
+            val sos = e.type == "sos"
             val text = when (e.type) {
                 "arrive" -> "${e.fromName} tiba di ${e.placeName}"
                 "leave" -> "${e.fromName} meninggalkan ${e.placeName}"
                 "battery_low" -> "Baterai ${e.fromName} hampir habis"
+                "sos" -> "${e.fromName} meminta bantuan! Ketuk untuk membuka lokasinya."
                 else -> return@forEach
             }
-            val open = PendingIntent.getActivity(
-                this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
-            )
+            val open = if (sos && e.lat != null && e.lng != null) {
+                val geo = Uri.parse("geo:${e.lat},${e.lng}?q=${e.lat},${e.lng}(SOS ${e.fromName})")
+                PendingIntent.getActivity(this, e.id.hashCode(), Intent(Intent.ACTION_VIEW, geo), PendingIntent.FLAG_IMMUTABLE)
+            } else {
+                PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+            }
             nm.notify(
                 e.id.hashCode(),
-                NotificationCompat.Builder(this, CHANNEL_FRIENDS)
+                NotificationCompat.Builder(this, if (sos) CHANNEL_SOS else CHANNEL_FRIENDS)
                     .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-                    .setContentTitle("GPS-Tracker")
+                    .setContentTitle(if (sos) "SOS DARURAT" else "GPS-Tracker")
                     .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setPriority(if (sos) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_DEFAULT)
+                    .apply { if (sos) setCategory(NotificationCompat.CATEGORY_ALARM) }
                     .setAutoCancel(true)
                     .setContentIntent(open)
                     .build()
@@ -198,6 +227,68 @@ class LocationService : Service() {
             eventsSeenTs = newest
             scope.launch { prefs.setEventsSeen(newest) }
         }
+    }
+
+    // ---- Pesan teman -> notifikasi lokal; ping -> kirim lokasi segar ----
+
+    private fun onMessages(friendUid: String, messages: List<Message>) {
+        val myUid = Repo.uid ?: return
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_MESSAGES, "Pesan", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val name = friendNames[friendUid] ?: "Teman"
+        var newest = msgSeenTs
+        messages.sortedBy { it.ts }.forEach { m ->
+            if (m.from == myUid || m.ts <= msgSeenTs || !notified.add("m-" + m.id)) return@forEach
+            val text = when (m.type) {
+                "text" -> "$name: ${m.text}"
+                "voice" -> "$name mengirim pesan suara"
+                "ping" -> "$name meminta lokasi Anda diperbarui"
+                else -> return@forEach
+            }
+            if (m.type == "ping") respondToPing()
+            val open = PendingIntent.getActivity(
+                this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+            )
+            nm.notify(
+                m.id.hashCode(),
+                NotificationCompat.Builder(this, CHANNEL_MESSAGES)
+                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setContentTitle("GPS-Tracker")
+                    .setContentText(text)
+                    .setAutoCancel(true)
+                    .setContentIntent(open)
+                    .build()
+            )
+            if (m.ts > newest) newest = m.ts
+        }
+        if (newest > msgSeenTs) {
+            msgSeenTs = newest
+            scope.launch { prefs.setMsgSeen(newest) }
+        }
+    }
+
+    /** Ping hanya dijawab bila berbagi aktif, sehingga tidak membocorkan lokasi saat berbagi mati. */
+    @SuppressLint("MissingPermission")
+    private fun respondToPing() {
+        val profile = me
+        if (profile == null || !profile.isSharing()) return
+        client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            .addOnSuccessListener { loc ->
+                if (loc == null) return@addOnSuccessListener
+                val battery = (getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
+                    .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                scope.launch {
+                    runCatching {
+                        Repo.publishLocation(
+                            profile.uid, loc.latitude, loc.longitude,
+                            if (loc.hasSpeed()) loc.speed.toDouble() else 0.0,
+                            loc.bearing.toDouble(), battery, stillSince,
+                        )
+                    }
+                }
+            }
     }
 
     // ---- Lokasi ----
@@ -282,6 +373,8 @@ class LocationService : Service() {
     companion object {
         private const val CHANNEL = "share"
         private const val CHANNEL_FRIENDS = "friends"
+        private const val CHANNEL_MESSAGES = "messages"
+        private const val CHANNEL_SOS = "sos"
         private const val NOTIF_ID = 1
         private const val LOW_BATTERY = 15
         const val ACTION_STOP = "stop"

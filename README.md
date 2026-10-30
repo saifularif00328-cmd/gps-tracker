@@ -16,6 +16,10 @@ Splash, onboarding, login/daftar, peta real-time dengan status Bergerak/Diam/Off
 Riwayat perjalanan + putar ulang (disimpan 7 hari), Tempat (Rumah/Kantor) dengan notifikasi tiba/pergi dan baterai rendah untuk teman, favorit dan grup teman. Semua tetap gratis (tanpa Cloud Functions): perjalanan diringkas di HP lalu diunggah satu dokumen per perjalanan, notifikasi dibuat lokal dari peristiwa yang didengarkan.
 Setelah memperbarui kode, tempel ulang `firestore.rules` di konsol Firebase lalu Publish.
 
+## Tahap 3
+Chat teks, tombol Ping (meminta teman memperbarui lokasi), pesan suara (tahan tombol mic, maks 30 detik, disimpan di Firestore), SOS (tombol merah di Peta; teman menerima notifikasi darurat dengan lokasi), dan widget layar utama (status berbagi, teman favorit, SOS, segarkan). Panggilan suara belum dikerjakan.
+Setelah memperbarui kode, tempel ulang `firestore.rules` di konsol Firebase lalu Publish. Izinkan mikrofon saat pertama merekam.
+
 ## Catatan
 - Lokasi dikirim adaptif: bergerak ±5 dtk (min 10 m), diam ±60 dtk, agar kuota gratis Firestore aman.
 - QR code, riwayat, geofence, grup, pesan/panggilan suara ada di Tahap 2-3.

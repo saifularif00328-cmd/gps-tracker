@@ -154,3 +154,66 @@ test("favorit/grup: hanya pemilik daftar yang bisa mengubah", async () => {
   await assertFails(db(B).doc(`users/${A}/friends/${B}`).update({ favorite: true }));
   await assertFails(db(X).doc(`users/${A}/friends/${B}`).update({ favorite: true }));
 });
+
+// ---- Tahap 3: chat ----
+
+const chatId = (x, y) => [x, y].sort().join("_");
+const msg = (from, extra = {}) => ({ from, type: "text", text: "halo", ts: 1, ...extra });
+
+test("chat: teman accepted bisa kirim dan baca", async () => {
+  await invite(A, B);
+  await accept(B, A);
+  const id = chatId(A, B);
+  await assertSucceeds(db(A).collection(`chats/${id}/messages`).add(msg(A)));
+  await assertSucceeds(db(B).collection(`chats/${id}/messages`).add(msg(B, { type: "ping", text: "" })));
+  await assertSucceeds(db(B).collection(`chats/${id}/messages`).orderBy("ts", "desc").limit(50).get());
+});
+
+test("chat: orang asing dan pending ditolak", async () => {
+  const id = chatId(A, B);
+  await assertFails(db(X).collection(`chats/${id}/messages`).add(msg(X)));
+  await assertFails(db(X).collection(`chats/${id}/messages`).get());
+  await invite(A, B); // belum diterima
+  await assertFails(db(A).collection(`chats/${id}/messages`).add(msg(A)));
+  await assertFails(db(B).collection(`chats/${id}/messages`).get());
+});
+
+test("chat: pihak ketiga tidak bisa masuk walau berteman dengan salah satu", async () => {
+  await invite(A, B); await accept(B, A);
+  await invite(A, X); await accept(X, A);
+  await assertFails(db(X).collection(`chats/${chatId(A, B)}/messages`).get());
+});
+
+test("chat: from palsu, tipe asing, dan audio terlalu besar ditolak", async () => {
+  await invite(A, B); await accept(B, A);
+  const col = (u) => db(u).collection(`chats/${chatId(A, B)}/messages`);
+  await assertFails(col(A).add(msg(B)));
+  await assertFails(col(A).add(msg(A, { type: "sos" })));
+  await assertFails(col(A).add(msg(A, { type: "voice", audio: "x".repeat(700001) })));
+  await assertSucceeds(col(A).add(msg(A, { type: "voice", audio: "x".repeat(1000), durMs: 3000 })));
+  await assertFails(col(A).add(msg(A, { text: "x".repeat(1001) })));
+});
+
+test("chat: update dilarang, hapus hanya pengirim", async () => {
+  await invite(A, B); await accept(B, A);
+  const path = `chats/${chatId(A, B)}/messages/m1`;
+  await seed((d) => d.doc(path).set(msg(A)));
+  await assertFails(db(A).doc(path).update({ text: "edit" }));
+  await assertFails(db(B).doc(path).delete());
+  await assertSucceeds(db(A).doc(path).delete());
+});
+
+test("chat: setelah pertemanan dihapus, akses hilang", async () => {
+  await invite(A, B); await accept(B, A);
+  const id = chatId(A, B);
+  await seed((d) => d.doc(`chats/${id}/messages/m1`).set(msg(A)));
+  await assertSucceeds(db(B).doc(`users/${B}/friends/${A}`).delete());
+  await assertFails(db(B).doc(`chats/${id}/messages/m1`).get());
+});
+
+test("peristiwa SOS dengan koordinat dibaca teman accepted saja", async () => {
+  await invite(A, B); await accept(B, A);
+  await assertSucceeds(db(A).doc(`users/${A}/events/s1`).set({ type: "sos", lat: 1, lng: 2, ts: 5, fromName: "A", placeName: "" }));
+  await assertSucceeds(db(B).doc(`users/${A}/events/s1`).get());
+  await assertFails(db(X).doc(`users/${A}/events/s1`).get());
+});

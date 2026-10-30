@@ -51,6 +51,28 @@ service cloud.firestore {
       }
     }
 
+    // Chat: peserta = dua uid pada chatId ("uidA_uidB"), keduanya harus saling berstatus accepted.
+    match /chats/{chatId}/messages/{mid} {
+      function ids() { return chatId.split('_'); }
+      function peer() { return ids()[0] == request.auth.uid ? ids()[1] : ids()[0]; }
+      function member() {
+        return request.auth != null
+          && ids().size() == 2
+          && request.auth.uid in ids()
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(peer())).data.status == 'accepted'
+          && get(/databases/$(database)/documents/users/$(peer())/friends/$(request.auth.uid)).data.status == 'accepted';
+      }
+      allow read: if member();
+      allow create: if member()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.type in ['text', 'voice', 'ping']
+        && request.resource.data.ts is number
+        && (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000)
+        && (!('audio' in request.resource.data) || request.resource.data.audio.size() <= 700000);
+      allow update: if false;
+      allow delete: if member() && resource.data.from == request.auth.uid;
+    }
+
     // Lokasi: pemilik menulis; hanya teman yang disetujui yang boleh membaca.
     match /locations/{uid} {
       allow write: if request.auth != null && request.auth.uid == uid;

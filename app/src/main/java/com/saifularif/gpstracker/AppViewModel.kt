@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.saifularif.gpstracker.data.Friend
+import com.saifularif.gpstracker.data.Message
+import com.saifularif.gpstracker.data.chatIdOf
 import com.saifularif.gpstracker.data.Place
 import com.saifularif.gpstracker.data.Trip
 import com.saifularif.gpstracker.data.Profile
@@ -63,6 +65,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val trips: StateFlow<List<Trip>> = combine(uid, historyUid) { me, other -> other ?: me }
         .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else Repo.trips(id) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Teman yang sedang dichat (null = daftar teman). */
+    val chatWith = MutableStateFlow<String?>(null)
+    val messages: StateFlow<List<Message>> = combine(uid, chatWith) { me, other ->
+        if (me != null && other != null) chatIdOf(me, other) else null
+    }.flatMapLatest { id -> if (id == null) flowOf(emptyList()) else Repo.messages(id) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Permintaan membuka dialog SOS (mis. dari widget). */
+    val sosPrompt = MutableStateFlow(false)
 
     val followUid = MutableStateFlow<String?>(null)
     val message = MutableStateFlow<String?>(null)
@@ -124,4 +136,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun viewHistoryOf(uid: String?) { historyUid.value = uid }
+
+    fun openChat(friendUid: String?) {
+        chatWith.value = friendUid
+        val me = uid.value ?: return
+        if (friendUid != null) launchSafe { Repo.pruneChat(chatIdOf(me, friendUid), me) }
+    }
+
+    private fun send(type: String, text: String = "", audio: String? = null, durMs: Long = 0L) = launchSafe {
+        val me = uid.value ?: return@launchSafe
+        val other = chatWith.value ?: return@launchSafe
+        Repo.sendMessage(chatIdOf(me, other), me, type, text, audio, durMs)
+    }
+
+    fun sendText(text: String) { if (text.isNotBlank()) send("text", text.take(1000)) }
+    fun sendVoice(audio: String, durMs: Long) { send("voice", audio = audio, durMs = durMs) }
+    fun sendPing() {
+        send("ping")
+        message.value = "Ping terkirim. Lokasi teman diperbarui bila ia sedang berbagi."
+    }
+
+    fun pingFriend(f: Friend) = launchSafe {
+        val me = uid.value ?: return@launchSafe
+        Repo.sendMessage(chatIdOf(me, f.uid), me, "ping")
+        message.value = "Ping terkirim ke ${f.name}"
+    }
+
+    fun sendSos(lat: Double, lng: Double) = launchSafe {
+        val p = profile.value ?: error("Profil belum siap")
+        Repo.publishEvent(p.uid, p.name, "sos", "", lat, lng)
+        message.value = "SOS terkirim ke teman Anda"
+    }
 }
