@@ -1,0 +1,96 @@
+package com.saifularif.gpstracker
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.saifularif.gpstracker.data.Friend
+import com.saifularif.gpstracker.data.Profile
+import com.saifularif.gpstracker.data.Repo
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    val prefs = (app as GpsTrackerApp).prefs
+
+    /** null = belum diketahui/belum login. */
+    val uid: StateFlow<String?> = Repo.authState()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Repo.uid)
+
+    val profile: StateFlow<Profile?> = uid.flatMapLatest { id ->
+        if (id == null) flowOf(null) else Repo.profile(id)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Teman + lokasi terbarunya (hanya yang accepted punya lokasi). */
+    val friends: StateFlow<List<Friend>> = uid.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else Repo.friends(id).flatMapLatest { list ->
+            if (list.isEmpty()) flowOf(emptyList()) else {
+                val flows: List<Flow<Friend>> = list.map { f ->
+                    if (f.status != "accepted") flowOf(f) else Repo.location(f.uid).map { d ->
+                        if (d == null) f else f.copy(
+                            lat = (d["lat"] as? Number)?.toDouble(),
+                            lng = (d["lng"] as? Number)?.toDouble(),
+                            speedMps = (d["speed"] as? Number)?.toDouble() ?: 0.0,
+                            bearing = (d["bearing"] as? Number)?.toDouble() ?: 0.0,
+                            battery = (d["battery"] as? Number)?.toInt() ?: -1,
+                            updatedAt = (d["updatedAt"] as? Number)?.toLong() ?: 0L,
+                            stillSince = (d["stillSince"] as? Number)?.toLong() ?: 0L,
+                        )
+                    }
+                }
+                combine(flows) { it.toList() }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val followUid = MutableStateFlow<String?>(null)
+    val message = MutableStateFlow<String?>(null)
+
+    fun follow(uid: String?) { followUid.value = uid }
+    fun toast(msg: String?) { message.value = msg }
+
+    private fun launchSafe(block: suspend () -> Unit) = viewModelScope.launch {
+        try { block() } catch (e: Exception) { message.value = e.message ?: "Terjadi kesalahan" }
+    }
+
+    fun signIn(email: String, pass: String, onDone: () -> Unit = {}) = launchSafe {
+        Repo.signIn(email, pass); onDone()
+    }
+
+    fun signUp(name: String, username: String, email: String, pass: String) = launchSafe {
+        require(name.isNotBlank() && username.isNotBlank()) { "Nama dan username wajib diisi" }
+        require(pass.length >= 6) { "Kata sandi minimal 6 karakter" }
+        Repo.signUp(name, username, email, pass)
+    }
+
+    fun signOut() { Repo.signOut() }
+
+    fun invite(codeOrUsername: String) = launchSafe {
+        val me = profile.value ?: error("Profil belum siap")
+        val name = Repo.invite(me, codeOrUsername)
+        message.value = "Undangan dikirim ke $name. Tunggu persetujuan."
+    }
+
+    fun accept(f: Friend) = launchSafe {
+        Repo.accept(profile.value ?: error("Profil belum siap"), f)
+    }
+
+    fun removeFriend(f: Friend) = launchSafe {
+        Repo.remove(uid.value ?: return@launchSafe, f.uid)
+        if (followUid.value == f.uid) followUid.value = null
+    }
+
+    fun setSharing(enabled: Boolean, pauseMs: Long = 0L) = launchSafe {
+        val id = uid.value ?: return@launchSafe
+        Repo.setSharing(id, enabled, if (pauseMs > 0) System.currentTimeMillis() + pauseMs else 0L)
+    }
+}

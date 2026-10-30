@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Profil: boleh dibaca pengguna login (untuk mencari teman via kode/username);
+    // hanya pemilik yang boleh menulis.
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
+
+      // Daftar teman milik {uid}
+      match /friends/{fid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if request.auth != null && (
+          request.auth.uid == uid
+          || (
+            request.auth.uid == fid && (
+              // pengirim undangan membuat entri "pending_in" di daftar penerima
+              (request.resource != null
+                && request.resource.data.status == 'pending_in'
+                && !exists(/databases/$(database)/documents/users/$(uid)/friends/$(fid)))
+              // penerima menerima: mengubah entri pengirim menjadi accepted
+              || (request.resource != null
+                && request.resource.data.status == 'accepted'
+                && get(/databases/$(database)/documents/users/$(fid)/friends/$(uid)).data.status == 'pending_in')
+              // salah satu pihak menghapus pertemanan
+              || request.resource == null
+            )
+          )
+        );
+      }
+    }
+
+    // Lokasi: pemilik menulis; hanya teman yang disetujui yang boleh membaca.
+    match /locations/{uid} {
+      allow write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && (
+        request.auth.uid == uid
+        || get(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid)).data.status == 'accepted'
+      );
+    }
+  }
+}

@@ -1,0 +1,59 @@
+package com.saifularif.gpstracker.data
+
+enum class FriendState { MOVING, STILL, OFFLINE }
+
+data class Profile(
+    val uid: String = "",
+    val name: String = "",
+    val username: String = "",
+    val code: String = "",
+    val shareEnabled: Boolean = true,
+    val pausedUntil: Long = 0L,
+) {
+    fun isSharing(now: Long = System.currentTimeMillis()) = shareEnabled && now >= pausedUntil
+}
+
+data class Friend(
+    val uid: String,
+    val name: String,
+    val status: String, // accepted | pending_in | pending_out
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val speedMps: Double = 0.0,
+    val bearing: Double = 0.0,
+    val battery: Int = -1,
+    val updatedAt: Long = 0L,
+    val stillSince: Long = 0L,
+) {
+    val hasLocation get() = lat != null && lng != null
+
+    fun state(now: Long = System.currentTimeMillis()): FriendState = when {
+        !hasLocation || now - updatedAt > OFFLINE_AFTER_MS -> FriendState.OFFLINE
+        speedMps >= MOVING_SPEED_MPS -> FriendState.MOVING
+        else -> FriendState.STILL
+    }
+
+    val speedKmh get() = speedMps * 3.6
+
+    companion object {
+        const val OFFLINE_AFTER_MS = 3 * 60_000L
+        const val MOVING_SPEED_MPS = 1.0
+    }
+}
+
+fun formatDuration(ms: Long): String {
+    val m = ms / 60_000
+    return when {
+        m < 1 -> "baru saja"
+        m < 60 -> "$m menit"
+        m < 24 * 60 -> "${m / 60} jam ${m % 60} menit"
+        else -> "${m / (24 * 60)} hari"
+    }
+}
+
+fun Friend.statusText(now: Long = System.currentTimeMillis()): String = when (state(now)) {
+    FriendState.MOVING -> "Bergerak • %.0f km/j".format(speedKmh)
+    FriendState.STILL -> "Diam • ${formatDuration(now - (if (stillSince > 0) stillSince else updatedAt))}"
+    FriendState.OFFLINE ->
+        if (updatedAt > 0) "Offline • terakhir ${formatDuration(now - updatedAt)} lalu" else "Belum membagikan lokasi"
+}
