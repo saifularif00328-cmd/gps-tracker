@@ -27,19 +27,25 @@ object Repo {
 
     suspend fun signUp(name: String, username: String, email: String, password: String) {
         val u = username.trim().lowercase()
-        val taken = db.collection("users").whereEqualTo("username", u).limit(1).get().await()
-        require(taken.isEmpty) { "Username sudah dipakai" }
+        // Akun dibuat lebih dulu: aturan Firestore mewajibkan login untuk membaca "users".
         val res = auth.createUserWithEmailAndPassword(email.trim(), password).await()
-        val id = res.user!!.uid
-        db.collection("users").document(id).set(
-            mapOf(
-                "name" to name.trim(),
-                "username" to u,
-                "code" to newCode(),
-                "shareEnabled" to true,
-                "pausedUntil" to 0L,
-            )
-        ).await()
+        val user = res.user!!
+        try {
+            val taken = db.collection("users").whereEqualTo("username", u).limit(1).get().await()
+            require(taken.isEmpty) { "Username sudah dipakai" }
+            db.collection("users").document(user.uid).set(
+                mapOf(
+                    "name" to name.trim(),
+                    "username" to u,
+                    "code" to newCode(),
+                    "shareEnabled" to true,
+                    "pausedUntil" to 0L,
+                )
+            ).await()
+        } catch (e: Exception) {
+            runCatching { user.delete().await() }
+            throw e
+        }
     }
 
     fun signOut() = auth.signOut()

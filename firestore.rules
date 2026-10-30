@@ -11,23 +11,20 @@ service cloud.firestore {
       // Daftar teman milik {uid}
       match /friends/{fid} {
         allow read: if request.auth != null && request.auth.uid == uid;
-        allow write: if request.auth != null && (
-          request.auth.uid == uid
-          || (
-            request.auth.uid == fid && (
-              // pengirim undangan membuat entri "pending_in" di daftar penerima
-              (request.resource != null
-                && request.resource.data.status == 'pending_in'
-                && !exists(/databases/$(database)/documents/users/$(uid)/friends/$(fid)))
-              // penerima menerima: mengubah entri pengirim menjadi accepted
-              || (request.resource != null
-                && request.resource.data.status == 'accepted'
-                && get(/databases/$(database)/documents/users/$(fid)/friends/$(uid)).data.status == 'pending_in')
-              // salah satu pihak menghapus pertemanan
-              || request.resource == null
-            )
-          )
-        );
+
+        // Pemilik daftar bebas mengelola daftarnya sendiri.
+        allow write: if request.auth != null && request.auth.uid == uid;
+
+        // Pihak lain (fid) hanya boleh:
+        //  - membuat undangan masuk "pending_in" bila belum ada entri;
+        //  - menerima undangan: pending_out -> accepted (bukti pemilik yang mengundang);
+        //  - menghapus pertemanan.
+        allow create: if request.auth != null && request.auth.uid == fid
+          && request.resource.data.status == 'pending_in';
+        allow update: if request.auth != null && request.auth.uid == fid
+          && resource.data.status == 'pending_out'
+          && request.resource.data.status == 'accepted';
+        allow delete: if request.auth != null && request.auth.uid == fid;
       }
     }
 
