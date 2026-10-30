@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Place
@@ -52,8 +54,10 @@ private val pages = listOf(
     GuidePage(Icons.Default.Group, "1. Undang teman", "Buka tab Teman, bagikan kode 6 karakter Anda atau masukkan kode/username teman. Lokasi baru terlihat setelah teman menyetujui."),
     GuidePage(Icons.Default.Place, "2. Lihat di peta", "Hijau = bergerak (lengkap dengan km/j). Oranye = diam (ada lama diam). Abu-abu = offline atau HP mati."),
     GuidePage(Icons.Default.Navigation, "3. Ikuti teman", "Ketuk teman di peta lalu tekan Ikuti. Kamera mengikuti dan jejak rutenya digambar."),
-    GuidePage(Icons.Default.Lock, "4. Atur privasi", "Di tab Profil Anda bisa mematikan atau menjeda berbagi lokasi (1 jam / 8 jam) kapan saja. Teman bisa dihapus kapan saja."),
-    GuidePage(Icons.Default.BatteryChargingFull, "5. Jaga tetap aktif", "Pilih izin lokasi \"Selalu\". Di HP Xiaomi/Oppo/Vivo: Pengaturan > Baterai > GPS-Tracker > Tanpa batasan, dan kunci aplikasi di menu aplikasi terbaru."),
+    GuidePage(Icons.Default.History, "4. Riwayat & favorit", "Tab Riwayat menyimpan perjalanan 7 hari dan bisa diputar ulang. Beri bintang pada teman penting dan atur grup (Keluarga, Kantor) lalu saring di peta."),
+    GuidePage(Icons.Default.Home, "5. Tempat & kabar teman", "Di tab Tempat simpan Rumah/Kantor saat Anda berada di sana. Teman yang Anda setujui diberi tahu saat Anda tiba atau pergi, begitu juga sebaliknya."),
+    GuidePage(Icons.Default.Lock, "6. Atur privasi", "Di tab Profil Anda bisa mematikan atau menjeda berbagi lokasi (1 jam / 8 jam) kapan saja. Teman bisa dihapus kapan saja."),
+    GuidePage(Icons.Default.BatteryChargingFull, "7. Jaga tetap aktif", "Pilih izin lokasi \"Selalu\". Di HP Xiaomi/Oppo/Vivo: Pengaturan > Baterai > GPS-Tracker > Tanpa batasan, dan kunci aplikasi di menu aplikasi terbaru."),
 )
 
 /** Popup petunjuk pemakaian. [showDontShowAgain] hanya untuk tampil otomatis pertama kali. */
@@ -72,7 +76,7 @@ fun GuideDialog(
             Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Petunjuk Pemakaian", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(12.dp))
-                HorizontalPager(state, Modifier.fillMaxWidth().height(250.dp)) { i ->
+                HorizontalPager(state, Modifier.fillMaxWidth().height(270.dp)) { i ->
                     val p = pages[i]
                     Column(
                         Modifier.fillMaxWidth(),

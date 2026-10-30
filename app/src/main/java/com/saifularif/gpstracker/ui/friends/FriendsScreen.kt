@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,6 +41,7 @@ import com.saifularif.gpstracker.data.Profile
 import com.saifularif.gpstracker.ui.FriendRowHeader
 import com.saifularif.gpstracker.ui.theme.Green
 import com.saifularif.gpstracker.ui.theme.GreenLight
+import com.saifularif.gpstracker.ui.theme.Orange
 import com.saifularif.gpstracker.ui.theme.Muted
 
 @Composable
@@ -49,12 +52,16 @@ fun FriendsScreen(
     onAccept: (Friend) -> Unit,
     onRemove: (Friend) -> Unit,
     onFollow: (Friend) -> Unit,
+    onFavorite: (Friend, Boolean) -> Unit,
+    onGroup: (Friend, String) -> Unit,
 ) {
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
+    var groupFor by remember { mutableStateOf<Friend?>(null) }
     val incoming = friends.filter { it.status == "pending_in" }
     val outgoing = friends.filter { it.status == "pending_out" }
     val accepted = friends.filter { it.status == "accepted" }
+        .sortedWith(compareByDescending<Friend> { it.favorite }.thenBy { it.name.lowercase() })
 
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -116,10 +123,26 @@ fun FriendsScreen(
         if (accepted.isEmpty()) item { Text("Belum ada teman terhubung.", color = Muted) }
         items(accepted, key = { "ok" + it.uid }) { f ->
             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) { FriendRowHeader(f) }
-                    Button(onClick = { onFollow(f) }, enabled = f.hasLocation, shape = RoundedCornerShape(12.dp)) { Text("Ikuti") }
-                    IconButton(onClick = { onRemove(f) }) { Icon(Icons.Default.Delete, "Hapus", tint = Muted) }
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) { FriendRowHeader(f) }
+                        IconButton(onClick = { onFavorite(f, !f.favorite) }) {
+                            Icon(
+                                if (f.favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                "Favorit",
+                                tint = if (f.favorite) Orange else Muted,
+                            )
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.AssistChip(
+                            onClick = { groupFor = f },
+                            label = { Text(if (f.group.isBlank()) "Atur grup" else "Grup: ${f.group}") },
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Button(onClick = { onFollow(f) }, enabled = f.hasLocation, shape = RoundedCornerShape(12.dp)) { Text("Ikuti") }
+                        IconButton(onClick = { onRemove(f) }) { Icon(Icons.Default.Delete, "Hapus", tint = Muted) }
+                    }
                 }
             }
         }
@@ -133,5 +156,29 @@ fun FriendsScreen(
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+
+    groupFor?.let { f ->
+        var text by remember(f.uid) { mutableStateOf(f.group) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { groupFor = null },
+            title = { Text("Grup untuk ${f.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Nama grup") })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Keluarga", "Kantor", "Teman").forEach { g ->
+                            androidx.compose.material3.AssistChip(onClick = { text = g }, label = { Text(g) })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { onGroup(f, text); groupFor = null }) { Text("Simpan") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { onGroup(f, ""); groupFor = null }) { Text("Hapus grup") }
+            },
+        )
     }
 }

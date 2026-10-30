@@ -38,7 +38,6 @@ import com.saifularif.gpstracker.data.FriendState
 import com.saifularif.gpstracker.ui.FriendRowHeader
 import com.saifularif.gpstracker.ui.theme.Green
 
-private enum class Filter(val label: String) { ALL("Semua"), MOVING("Bergerak"), STILL("Diam") }
 
 @Composable
 fun MapScreen(
@@ -46,17 +45,20 @@ fun MapScreen(
     onFollow: (Friend) -> Unit,
     onOpenGuide: () -> Unit,
 ) {
-    var filter by remember { mutableStateOf(Filter.ALL) }
+    var filter by remember { mutableStateOf("all") }
     var selectedUid by remember { mutableStateOf<String?>(null) }
     var centerUid by remember { mutableStateOf<String?>(null) }
     val now = System.currentTimeMillis()
 
     val accepted = friends.filter { it.status == "accepted" }
+    val groups = accepted.map { it.group }.filter { it.isNotBlank() }.distinct().sorted()
     val shown = accepted.filter {
-        when (filter) {
-            Filter.ALL -> true
-            Filter.MOVING -> it.state(now) == FriendState.MOVING
-            Filter.STILL -> it.state(now) == FriendState.STILL
+        when {
+            filter == "moving" -> it.state(now) == FriendState.MOVING
+            filter == "still" -> it.state(now) == FriendState.STILL
+            filter == "fav" -> it.favorite
+            filter.startsWith("g:") -> it.group == filter.removePrefix("g:")
+            else -> true
         }
     }
     val selected = shown.firstOrNull { it.uid == selectedUid }
@@ -80,12 +82,14 @@ fun MapScreen(
                     IconButton(onClick = onOpenGuide) { Icon(Icons.Default.Info, "Petunjuk", tint = Green) }
                 }
             }
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Filter.values().forEach { f ->
+            val chips = listOf("all" to "Semua", "moving" to "Bergerak", "still" to "Diam", "fav" to "Favorit") +
+                groups.map { "g:$it" to it }
+            LazyRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(chips, key = { it.first }) { (key, label) ->
                     FilterChip(
-                        selected = filter == f,
-                        onClick = { filter = f },
-                        label = { Text(f.label) },
+                        selected = filter == key,
+                        onClick = { filter = key },
+                        label = { Text(label) },
                     )
                 }
             }

@@ -112,3 +112,45 @@ test("menolak undangan: penerima bisa menghapus kedua entri", async () => {
   await assertSucceeds(db(B).doc(`users/${B}/friends/${A}`).delete());
   await assertSucceeds(db(B).doc(`users/${A}/friends/${B}`).delete());
 });
+
+// ---- Tahap 2: tempat, perjalanan, peristiwa, favorit/grup ----
+
+test("tempat: hanya pemilik yang bisa baca/tulis", async () => {
+  await assertSucceeds(db(A).doc(`users/${A}/places/home`).set({ name: "Rumah", lat: 1, lng: 2, radius: 100 }));
+  await assertSucceeds(db(A).doc(`users/${A}/places/home`).get());
+  await invite(A, B);
+  await accept(B, A);
+  await assertFails(db(B).doc(`users/${A}/places/home`).get());
+  await assertFails(db(X).doc(`users/${A}/places/home`).set({ name: "x" }));
+});
+
+for (const col of ["trips", "events"]) {
+  test(`${col}: pemilik menulis, teman accepted membaca, orang asing ditolak`, async () => {
+    await assertSucceeds(db(A).doc(`users/${A}/${col}/t1`).set({ ts: 1 }));
+    await assertFails(db(X).doc(`users/${A}/${col}/t2`).set({ ts: 1 }));
+    await assertFails(db(X).doc(`users/${A}/${col}/t1`).get());
+    await invite(A, B);
+    await assertFails(db(B).doc(`users/${A}/${col}/t1`).get()); // belum diterima
+    await accept(B, A);
+    await assertSucceeds(db(B).doc(`users/${A}/${col}/t1`).get());
+    await assertFails(db(B).doc(`users/${A}/${col}/t3`).set({ ts: 1 })); // teman tidak boleh menulis
+    await assertFails(db(B).doc(`users/${A}/${col}/t1`).delete());
+  });
+
+  test(`${col}: query koleksi teman accepted berjalan, orang asing ditolak`, async () => {
+    await invite(A, B);
+    await accept(B, A);
+    await seed((d) => d.doc(`users/${A}/${col}/t1`).set({ ts: 5 }));
+    await assertSucceeds(db(B).collection(`users/${A}/${col}`).orderBy("ts").limit(10).get());
+    await assertFails(db(X).collection(`users/${A}/${col}`).orderBy("ts").limit(10).get());
+  });
+}
+
+test("favorit/grup: hanya pemilik daftar yang bisa mengubah", async () => {
+  await invite(A, B);
+  await accept(B, A);
+  await assertSucceeds(db(A).doc(`users/${A}/friends/${B}`).update({ favorite: true, group: "Keluarga" }));
+  // B tidak boleh mengubah label di daftar A (hanya update pending_out -> accepted yang diizinkan)
+  await assertFails(db(B).doc(`users/${A}/friends/${B}`).update({ favorite: true }));
+  await assertFails(db(X).doc(`users/${A}/friends/${B}`).update({ favorite: true }));
+});

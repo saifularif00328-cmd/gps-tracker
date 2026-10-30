@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.saifularif.gpstracker.data.Friend
+import com.saifularif.gpstracker.data.Place
+import com.saifularif.gpstracker.data.Trip
 import com.saifularif.gpstracker.data.Profile
 import com.saifularif.gpstracker.data.Repo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,6 +54,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    val places: StateFlow<List<Place>> = uid.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else Repo.places(id)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Pemilik riwayat yang sedang dilihat (null = saya sendiri). */
+    val historyUid = MutableStateFlow<String?>(null)
+    val trips: StateFlow<List<Trip>> = combine(uid, historyUid) { me, other -> other ?: me }
+        .flatMapLatest { id -> if (id == null) flowOf(emptyList()) else Repo.trips(id) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     val followUid = MutableStateFlow<String?>(null)
     val message = MutableStateFlow<String?>(null)
 
@@ -93,4 +105,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val id = uid.value ?: return@launchSafe
         Repo.setSharing(id, enabled, if (pauseMs > 0) System.currentTimeMillis() + pauseMs else 0L)
     }
+
+    fun setFavorite(f: Friend, fav: Boolean) = launchSafe {
+        Repo.setFavorite(uid.value ?: return@launchSafe, f.uid, fav)
+    }
+
+    fun setGroup(f: Friend, group: String) = launchSafe {
+        Repo.setGroup(uid.value ?: return@launchSafe, f.uid, group)
+    }
+
+    fun addPlace(name: String, lat: Double, lng: Double, radius: Double) = launchSafe {
+        Repo.addPlace(uid.value ?: return@launchSafe, name, lat, lng, radius)
+        message.value = "Tempat \"${name.trim()}\" disimpan"
+    }
+
+    fun deletePlace(p: Place) = launchSafe {
+        Repo.deletePlace(uid.value ?: return@launchSafe, p.id)
+    }
+
+    fun viewHistoryOf(uid: String?) { historyUid.value = uid }
 }

@@ -69,6 +69,9 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Uji unit (rute, perjalanan, geofence)
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 

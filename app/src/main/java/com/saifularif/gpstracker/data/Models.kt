@@ -24,6 +24,8 @@ data class Friend(
     val battery: Int = -1,
     val updatedAt: Long = 0L,
     val stillSince: Long = 0L,
+    val favorite: Boolean = false,
+    val group: String = "",
 ) {
     val hasLocation get() = lat != null && lng != null
 
@@ -57,3 +59,28 @@ fun Friend.statusText(now: Long = System.currentTimeMillis()): String = when (st
     FriendState.OFFLINE ->
         if (updatedAt > 0) "Offline • terakhir ${formatDuration(now - updatedAt)} lalu" else "Belum membagikan lokasi"
 }
+
+data class Place(
+    val id: String = "",
+    val name: String = "",
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+    val radius: Double = 100.0,
+)
+
+data class Trip(
+    val id: String,
+    val startAt: Long,
+    val endAt: Long,
+    val distanceM: Double,
+    val points: List<GeoPt>,
+)
+
+data class FriendEvent(
+    val id: String,
+    val fromUid: String,
+    val fromName: String,
+    val type: String, // arrive | leave | battery_low
+    val placeName: String,
+    val ts: Long,
+)

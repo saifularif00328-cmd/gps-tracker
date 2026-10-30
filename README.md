@@ -12,6 +12,10 @@ Aplikasi Android (Kotlin + Jetpack Compose) untuk melihat lokasi teman secara re
 ## Fitur MVP
 Splash, onboarding, login/daftar, peta real-time dengan status Bergerak/Diam/Offline, mode Ikuti (jejak rute), undang teman lewat kode/username dengan persetujuan, berbagi lokasi ON/OFF + jeda 1/8 jam, foreground service dengan notifikasi permanen, mulai otomatis setelah reboot, popup petunjuk pemakaian.
 
+## Tahap 2
+Riwayat perjalanan + putar ulang (disimpan 7 hari), Tempat (Rumah/Kantor) dengan notifikasi tiba/pergi dan baterai rendah untuk teman, favorit dan grup teman. Semua tetap gratis (tanpa Cloud Functions): perjalanan diringkas di HP lalu diunggah satu dokumen per perjalanan, notifikasi dibuat lokal dari peristiwa yang didengarkan.
+Setelah memperbarui kode, tempel ulang `firestore.rules` di konsol Firebase lalu Publish.
+
 ## Catatan
 - Lokasi dikirim adaptif: bergerak ±5 dtk (min 10 m), diam ±60 dtk, agar kuota gratis Firestore aman.
 - QR code, riwayat, geofence, grup, pesan/panggilan suara ada di Tahap 2-3.

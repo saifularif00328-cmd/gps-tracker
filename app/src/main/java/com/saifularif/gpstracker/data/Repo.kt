@@ -97,6 +97,8 @@ object Repo {
                         uid = it.id,
                         name = it.getString("name") ?: "Teman",
                         status = it.getString("status") ?: "pending_out",
+                        favorite = it.getBoolean("favorite") ?: false,
+                        group = it.getString("group") ?: "",
                     )
                 } ?: emptyList()
                 trySend(list)
@@ -164,5 +166,121 @@ object Repo {
                 "stillSince" to stillSince,
             )
         ).await()
+    }
+
+    // ---- Favorit & grup (label pribadi di daftar teman sendiri) ----
+
+    suspend fun setFavorite(meUid: String, friendUid: String, favorite: Boolean) {
+        db.collection("users").document(meUid).collection("friends").document(friendUid)
+            .update("favorite", favorite).await()
+    }
+
+    suspend fun setGroup(meUid: String, friendUid: String, group: String) {
+        db.collection("users").document(meUid).collection("friends").document(friendUid)
+            .update("group", group.trim()).await()
+    }
+
+    // ---- Tempat ----
+
+    fun places(uid: String): Flow<List<Place>> = callbackFlow {
+        val reg = db.collection("users").document(uid).collection("places")
+            .addSnapshotListener { s, _ ->
+                trySend(s?.documents?.map {
+                    Place(
+                        id = it.id,
+                        name = it.getString("name") ?: "",
+                        lat = it.getDouble("lat") ?: 0.0,
+                        lng = it.getDouble("lng") ?: 0.0,
+                        radius = it.getDouble("radius") ?: 100.0,
+                    )
+                }?.sortedBy { it.name.lowercase() } ?: emptyList())
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun addPlace(uid: String, name: String, lat: Double, lng: Double, radius: Double) {
+        require(name.isNotBlank()) { "Nama tempat wajib diisi" }
+        db.collection("users").document(uid).collection("places").add(
+            mapOf("name" to name.trim(), "lat" to lat, "lng" to lng, "radius" to radius)
+        ).await()
+    }
+
+    suspend fun deletePlace(uid: String, placeId: String) {
+        db.collection("users").document(uid).collection("places").document(placeId).delete().await()
+    }
+
+    // ---- Riwayat perjalanan (satu dokumen per perjalanan) ----
+
+    suspend fun publishTrip(uid: String, trip: Trip) {
+        db.collection("users").document(uid).collection("trips").document(trip.id).set(
+            mapOf(
+                "startAt" to trip.startAt,
+                "endAt" to trip.endAt,
+                "distanceM" to trip.distanceM,
+                "pts" to trip.points.flatMap { listOf(it.lat, it.lng) },
+            )
+        ).await()
+    }
+
+    fun trips(uid: String): Flow<List<Trip>> = callbackFlow {
+        val reg = db.collection("users").document(uid).collection("trips")
+            .orderBy("startAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(30)
+            .addSnapshotListener { s, _ ->
+                trySend(s?.documents?.map { d ->
+                    val flat = (d.get("pts") as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() } ?: emptyList()
+                    Trip(
+                        id = d.id,
+                        startAt = d.getLong("startAt") ?: 0L,
+                        endAt = d.getLong("endAt") ?: 0L,
+                        distanceM = d.getDouble("distanceM") ?: 0.0,
+                        points = flat.chunked(2).filter { it.size == 2 }.map { GeoPt(it[0], it[1]) },
+                    )
+                } ?: emptyList())
+            }
+        awaitClose { reg.remove() }
+    }
+
+    // ---- Peristiwa (tiba/pergi/baterai rendah) ----
+
+    suspend fun publishEvent(uid: String, fromName: String, type: String, placeName: String) {
+        db.collection("users").document(uid).collection("events").add(
+            mapOf(
+                "type" to type,
+                "placeName" to placeName,
+                "fromName" to fromName,
+                "ts" to System.currentTimeMillis(),
+            )
+        ).await()
+    }
+
+    fun events(friendUid: String): Flow<List<FriendEvent>> = callbackFlow {
+        val reg = db.collection("users").document(friendUid).collection("events")
+            .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(10)
+            .addSnapshotListener { s, _ ->
+                trySend(s?.documents?.map { d ->
+                    FriendEvent(
+                        id = d.id,
+                        fromUid = friendUid,
+                        fromName = d.getString("fromName") ?: "Teman",
+                        type = d.getString("type") ?: "",
+                        placeName = d.getString("placeName") ?: "",
+                        ts = d.getLong("ts") ?: 0L,
+                    )
+                } ?: emptyList())
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /** Pembersihan oleh klien (tanpa Cloud Functions): perjalanan > 7 hari, peristiwa > 2 hari. */
+    suspend fun pruneOld(uid: String) {
+        val now = System.currentTimeMillis()
+        val trips = db.collection("users").document(uid).collection("trips")
+            .whereLessThan("startAt", now - 7 * 24 * 3_600_000L).get().await()
+        trips.documents.forEach { it.reference.delete() }
+        val events = db.collection("users").document(uid).collection("events")
+            .whereLessThan("ts", now - 2 * 24 * 3_600_000L).get().await()
+        events.documents.forEach { it.reference.delete() }
     }
 }

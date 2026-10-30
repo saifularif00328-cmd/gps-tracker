@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
@@ -52,6 +54,8 @@ import com.saifularif.gpstracker.ui.follow.FollowScreen
 import com.saifularif.gpstracker.ui.friends.FriendsScreen
 import com.saifularif.gpstracker.ui.guide.GuideDialog
 import com.saifularif.gpstracker.ui.guide.HintDialog
+import com.saifularif.gpstracker.ui.history.HistoryScreen
+import com.saifularif.gpstracker.ui.places.PlacesScreen
 import com.saifularif.gpstracker.ui.map.MapScreen
 import com.saifularif.gpstracker.ui.onboarding.OnboardingScreen
 import com.saifularif.gpstracker.ui.profile.ProfileScreen
@@ -111,7 +115,7 @@ private fun SplashScreen() {
     }
 }
 
-private enum class Tab(val label: String) { MAP("Peta"), FRIENDS("Teman"), FOLLOW("Ikuti"), PROFILE("Profil") }
+private enum class Tab(val label: String) { MAP("Peta"), FRIENDS("Teman"), HISTORY("Riwayat"), PLACES("Tempat"), PROFILE("Profil") }
 
 @Composable
 private fun MainScaffold(vm: AppViewModel) {
@@ -120,6 +124,9 @@ private fun MainScaffold(vm: AppViewModel) {
     val me by vm.profile.collectAsState()
     val friends by vm.friends.collectAsState()
     val followUid by vm.followUid.collectAsState()
+    val places by vm.places.collectAsState()
+    val trips by vm.trips.collectAsState()
+    val historyUid by vm.historyUid.collectAsState()
     val guideHidden by vm.prefs.guideHiddenFlow.collectAsState(initial = true)
     val followHintSeen by vm.prefs.followHintFlow.collectAsState(initial = true)
     val friendsHintSeen by vm.prefs.friendsHintFlow.collectAsState(initial = true)
@@ -147,8 +154,9 @@ private fun MainScaffold(vm: AppViewModel) {
     LaunchedEffect(Unit) { if (!fineOk) explain = true else if (!bgOk) explainBg = true }
 
     val shareEnabled = me?.shareEnabled == true
-    LaunchedEffect(shareEnabled, fineOk, me?.uid) {
-        if (me != null && shareEnabled && fineOk) LocationService.start(context) else LocationService.stop(context)
+    LaunchedEffect(fineOk, me?.uid) {
+        // Layanan tetap berjalan saat login (untuk kabar teman); ia sendiri berhenti mengirim lokasi bila berbagi mati.
+        if (me != null && fineOk) LocationService.start(context) else LocationService.stop(context)
     }
 
     if (explain) AlertDialog(
@@ -179,7 +187,7 @@ private fun MainScaffold(vm: AppViewModel) {
         guideOpen = false
         if (dontShow) scope.launch { vm.prefs.setGuideHidden(true) }
     }
-    if (tab == Tab.FOLLOW && !followHintSeen && !guideOpen) {
+    if (tab == Tab.MAP && followUid != null && !followHintSeen && !guideOpen) {
         HintDialog("Mode Ikuti", "Pilih teman yang sedang bergerak. Kamera akan mengikuti dan jejak rutenya digambar di peta.") {
             scope.launch { vm.prefs.setFollowHintSeen() }
         }
@@ -202,7 +210,8 @@ private fun MainScaffold(vm: AppViewModel) {
                                 when (t) {
                                     Tab.MAP -> Icons.Default.Place
                                     Tab.FRIENDS -> Icons.Default.Group
-                                    Tab.FOLLOW -> Icons.Default.Navigation
+                                    Tab.HISTORY -> Icons.Default.History
+                                    Tab.PLACES -> Icons.Default.Home
                                     Tab.PROFILE -> Icons.Default.Person
                                 }, t.label
                             )
@@ -220,13 +229,20 @@ private fun MainScaffold(vm: AppViewModel) {
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) {
-                Tab.MAP -> MapScreen(friends, onFollow = { vm.follow(it.uid); tab = Tab.FOLLOW }, onOpenGuide = { guideOpen = true })
+                Tab.MAP ->
+                    if (followUid != null) FollowScreen(friends, followUid, onPick = vm::follow)
+                    else MapScreen(friends, onFollow = { vm.follow(it.uid) }, onOpenGuide = { guideOpen = true })
                 Tab.FRIENDS -> FriendsScreen(
                     me, friends,
                     onInvite = vm::invite, onAccept = vm::accept, onRemove = vm::removeFriend,
-                    onFollow = { vm.follow(it.uid); tab = Tab.FOLLOW },
+                    onFollow = { vm.follow(it.uid); tab = Tab.MAP },
+                    onFavorite = vm::setFavorite, onGroup = vm::setGroup,
                 )
-                Tab.FOLLOW -> FollowScreen(friends, followUid, onPick = vm::follow)
+                Tab.HISTORY -> HistoryScreen(friends, trips, historyUid, onSelect = vm::viewHistoryOf)
+                Tab.PLACES -> PlacesScreen(
+                    places,
+                    onAdd = vm::addPlace, onDelete = vm::deletePlace, onMessage = vm::toast,
+                )
                 Tab.PROFILE -> ProfileScreen(
                     me,
                     onSetSharing = { on, ms -> vm.setSharing(on, ms) },
