@@ -10,6 +10,24 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
 object Repo {
+    private val _errors = kotlinx.coroutines.flow.MutableSharedFlow<Throwable>(
+        extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+    )
+    /** Error dari listener Firestore (mis. aturan belum dipublish) agar bisa ditampilkan ke pengguna. */
+    val errors: kotlinx.coroutines.flow.SharedFlow<Throwable> = _errors
+
+    fun reportError(e: Throwable?) {
+        // Saat keluar akun, listener lama wajar ditolak; jangan dianggap kesalahan.
+        if (e != null && uid != null) _errors.tryEmit(e)
+    }
+
+    fun describe(e: Throwable): String =
+        if (e is com.google.firebase.firestore.FirebaseFirestoreException &&
+            e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED
+        ) "Ditolak Firebase: aturan (rules) belum diperbarui. Salin firestore.rules terbaru dari GitHub ke Firebase Console > Firestore > Rules, lalu klik Publish."
+        else e.message ?: "Terjadi kesalahan"
+
     private val auth get() = FirebaseAuth.getInstance()
     private val db get() = FirebaseFirestore.getInstance()
 
@@ -56,7 +74,8 @@ object Repo {
     }
 
     fun profile(uid: String): Flow<Profile?> = callbackFlow {
-        val reg = db.collection("users").document(uid).addSnapshotListener { s, _ ->
+        val reg = db.collection("users").document(uid).addSnapshotListener { s, err ->
+                reportError(err)
             trySend(s?.toProfile())
         }
         awaitClose { reg.remove() }
@@ -91,7 +110,8 @@ object Repo {
 
     fun friends(uid: String): Flow<List<Friend>> = callbackFlow {
         val reg = db.collection("users").document(uid).collection("friends")
-            .addSnapshotListener { s, _ ->
+            .addSnapshotListener { s, err ->
+                reportError(err)
                 val list = s?.documents?.map {
                     Friend(
                         uid = it.id,
@@ -107,7 +127,8 @@ object Repo {
     }
 
     fun location(friendUid: String): Flow<Map<String, Any?>?> = callbackFlow {
-        val reg = db.collection("locations").document(friendUid).addSnapshotListener { s, _ ->
+        val reg = db.collection("locations").document(friendUid).addSnapshotListener { s, err ->
+                reportError(err)
             trySend(if (s != null && s.exists()) s.data else null)
         }
         awaitClose { reg.remove() }
@@ -184,7 +205,8 @@ object Repo {
 
     fun places(uid: String): Flow<List<Place>> = callbackFlow {
         val reg = db.collection("users").document(uid).collection("places")
-            .addSnapshotListener { s, _ ->
+            .addSnapshotListener { s, err ->
+                reportError(err)
                 trySend(s?.documents?.map {
                     Place(
                         id = it.id,
@@ -226,7 +248,8 @@ object Repo {
         val reg = db.collection("users").document(uid).collection("trips")
             .orderBy("startAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
             .limit(30)
-            .addSnapshotListener { s, _ ->
+            .addSnapshotListener { s, err ->
+                reportError(err)
                 trySend(s?.documents?.map { d ->
                     val flat = (d.get("pts") as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() } ?: emptyList()
                     Trip(
@@ -265,7 +288,8 @@ object Repo {
         val reg = db.collection("users").document(friendUid).collection("events")
             .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING)
             .limit(10)
-            .addSnapshotListener { s, _ ->
+            .addSnapshotListener { s, err ->
+                reportError(err)
                 trySend(s?.documents?.map { d ->
                     FriendEvent(
                         id = d.id,
@@ -299,7 +323,8 @@ object Repo {
         val reg = db.collection("chats").document(chatId).collection("messages")
             .orderBy("ts", com.google.firebase.firestore.Query.Direction.DESCENDING)
             .limit(50)
-            .addSnapshotListener { s, _ ->
+            .addSnapshotListener { s, err ->
+                reportError(err)
                 trySend(s?.documents?.map { d ->
                     Message(
                         id = d.id,

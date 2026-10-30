@@ -79,11 +79,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val followUid = MutableStateFlow<String?>(null)
     val message = MutableStateFlow<String?>(null)
 
+    /** friendUid -> waktu ping terakhir dikirim (untuk status "menunggu jawaban"). */
+    val pingedAt = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    init {
+        viewModelScope.launch {
+            var last = 0L
+            Repo.errors.collect { e ->
+                val now = System.currentTimeMillis()
+                if (now - last > 15_000L) { last = now; message.value = Repo.describe(e) }
+            }
+        }
+    }
+
     fun follow(uid: String?) { followUid.value = uid }
     fun toast(msg: String?) { message.value = msg }
 
     private fun launchSafe(block: suspend () -> Unit) = viewModelScope.launch {
-        try { block() } catch (e: Exception) { message.value = e.message ?: "Terjadi kesalahan" }
+        try { block() } catch (e: Exception) { message.value = Repo.describe(e) }
     }
 
     fun signIn(email: String, pass: String, onDone: () -> Unit = {}) = launchSafe {
@@ -153,13 +166,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sendVoice(audio: String, durMs: Long) { send("voice", audio = audio, durMs = durMs) }
     fun sendPing() {
         send("ping")
-        message.value = "Ping terkirim. Lokasi teman diperbarui bila ia sedang berbagi."
+        chatWith.value?.let { pingedAt.value = pingedAt.value + (it to System.currentTimeMillis()) }
+        message.value = "Permintaan terkirim. Lokasi teman diperbarui bila ia menyetujui."
     }
 
     fun pingFriend(f: Friend) = launchSafe {
         val me = uid.value ?: return@launchSafe
         Repo.sendMessage(chatIdOf(me, f.uid), me, "ping")
-        message.value = "Ping terkirim ke ${f.name}"
+        pingedAt.value = pingedAt.value + (f.uid to System.currentTimeMillis())
+        message.value = "Permintaan terkirim ke ${f.name}"
     }
 
     fun sendSos(lat: Double, lng: Double) = launchSafe {

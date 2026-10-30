@@ -1,6 +1,7 @@
 package com.saifularif.gpstracker.ui.friends
 
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.saifularif.gpstracker.data.Friend
 import com.saifularif.gpstracker.data.Profile
+import com.saifularif.gpstracker.data.offlineHint
+import com.saifularif.gpstracker.data.sharingText
 import com.saifularif.gpstracker.ui.FriendRowHeader
 import com.saifularif.gpstracker.ui.theme.Green
 import com.saifularif.gpstracker.ui.theme.GreenLight
@@ -58,6 +61,9 @@ fun FriendsScreen(
     onGroup: (Friend, String) -> Unit,
     onChat: (Friend) -> Unit,
     onPing: (Friend) -> Unit,
+    onSetSharing: (enabled: Boolean, pauseMs: Long) -> Unit,
+    pingedAt: Map<String, Long>,
+    onToast: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
@@ -98,6 +104,30 @@ fun FriendsScreen(
             }
         }
         item {
+            val now = System.currentTimeMillis()
+            val active = me?.isSharing(now) == true
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = if (active) Color.White else Color(0xFFFEF2F2)),
+                elevation = CardDefaults.cardElevation(2.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Bagikan lokasi saya", fontWeight = FontWeight.SemiBold)
+                        Text(me?.sharingText(now) ?: "", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = me?.shareEnabled == true && active,
+                        onCheckedChange = { onSetSharing(it, 0L) },
+                    )
+                }
+            }
+        }
+        item {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     query, { query = it },
@@ -126,12 +156,20 @@ fun FriendsScreen(
         item { Text("Teman terhubung (${accepted.size})", fontWeight = FontWeight.SemiBold) }
         if (accepted.isEmpty()) item { Text("Belum ada teman terhubung.", color = Muted) }
         items(accepted, key = { "ok" + it.uid }) { f ->
-            Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+            val offline = f.offlineHint() != null
+            val waiting = (pingedAt[f.uid] ?: 0L) > f.updatedAt
+            Card(
+                Modifier.fillMaxWidth().clickable {
+                    if (f.hasLocation) onFollow(f) else onToast("${f.name} belum membagikan lokasi")
+                },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp),
+            ) {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) { FriendRowHeader(f) }
                         IconButton(onClick = { onChat(f) }) { Icon(Icons.Default.Chat, "Chat", tint = Green) }
-                        IconButton(onClick = { onPing(f) }) { Icon(Icons.Default.MyLocation, "Ping lokasi", tint = Green) }
                         IconButton(onClick = { onFavorite(f, !f.favorite) }) {
                             Icon(
                                 if (f.favorite) Icons.Default.Star else Icons.Default.StarBorder,
@@ -140,15 +178,40 @@ fun FriendsScreen(
                             )
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (offline) {
+                        Text(
+                            f.offlineHint() ?: "",
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    if (waiting) {
+                        Text(
+                            "Permintaan terkirim, menunggu jawaban ${f.name}...",
+                            color = Green,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         androidx.compose.material3.AssistChip(
                             onClick = { groupFor = f },
                             label = { Text(if (f.group.isBlank()) "Atur grup" else "Grup: ${f.group}") },
                         )
+                        androidx.compose.material3.AssistChip(
+                            onClick = { onPing(f) },
+                            label = { Text(if (offline) "Minta aktifkan" else "Perbarui lokasi") },
+                            leadingIcon = { Icon(Icons.Default.MyLocation, null, tint = Green) },
+                        )
                         Spacer(Modifier.weight(1f))
-                        Button(onClick = { onFollow(f) }, enabled = f.hasLocation, shape = RoundedCornerShape(12.dp)) { Text("Ikuti") }
                         IconButton(onClick = { onRemove(f) }) { Icon(Icons.Default.Delete, "Hapus", tint = Muted) }
                     }
+                    Text(
+                        "Ketuk kartu untuk mengikuti",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
         }

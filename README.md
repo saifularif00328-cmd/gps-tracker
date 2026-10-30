@@ -20,6 +20,9 @@ Setelah memperbarui kode, tempel ulang `firestore.rules` di konsol Firebase lalu
 Chat teks, tombol Ping (meminta teman memperbarui lokasi), pesan suara (tahan tombol mic, maks 30 detik, disimpan di Firestore), SOS (tombol merah di Peta; teman menerima notifikasi darurat dengan lokasi), dan widget layar utama (status berbagi, teman favorit, SOS, segarkan). Panggilan suara belum dikerjakan.
 Setelah memperbarui kode, tempel ulang `firestore.rules` di konsol Firebase lalu Publish. Izinkan mikrofon saat pertama merekam.
 
+## Perbaikan setelah uji di HP
+Switch "Bagikan lokasi saya" di tab Teman dan chip di Peta, tombol "Minta aktifkan" untuk teman offline (teman menerima notifikasi Nyalakan/Tidak), ketuk kartu teman untuk langsung mengikuti, dialog izin baterai agar aplikasi tidak mudah dimatikan sistem, dan pesan error yang jelas bila aturan Firestore belum dipublish ("Missing or insufficient permissions").
+
 ## Catatan
 - Lokasi dikirim adaptif: bergerak ±5 dtk (min 10 m), diam ±60 dtk, agar kuota gratis Firestore aman.
 - QR code, riwayat, geofence, grup, pesan/panggilan suara ada di Tahap 2-3.

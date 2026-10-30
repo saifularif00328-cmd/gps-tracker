@@ -46,6 +46,8 @@ fun MapScreen(
     onFollow: (Friend) -> Unit,
     onOpenGuide: () -> Unit,
     onSos: () -> Unit,
+    sharing: Boolean,
+    onToggleSharing: () -> Unit,
 ) {
     var filter by remember { mutableStateOf("all") }
     var selectedUid by remember { mutableStateOf<String?>(null) }
@@ -80,7 +82,15 @@ fun MapScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("GPS-Tracker", style = MaterialTheme.typography.titleMedium, color = Green)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("GPS-Tracker", style = MaterialTheme.typography.titleMedium, color = Green)
+                        FilterChip(
+                            selected = sharing,
+                            onClick = onToggleSharing,
+                            label = { Text(if (sharing) "Berbagi: Aktif" else "Berbagi: Mati") },
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onSos) { Icon(Icons.Default.Warning, "SOS", tint = Color(0xFFDC2626)) }
                         IconButton(onClick = onOpenGuide) { Icon(Icons.Default.Info, "Petunjuk", tint = Green) }
@@ -96,6 +106,22 @@ fun MapScreen(
                         onClick = { filter = key },
                         label = { Text(label) },
                     )
+                }
+            }
+        }
+
+        if (!sharing) {
+            Card(
+                Modifier.align(Alignment.TopCenter).padding(top = 120.dp, start = 12.dp, end = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+            ) {
+                Row(
+                    Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Berbagi mati: teman tidak bisa melihat Anda.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onToggleSharing) { Text("Nyalakan") }
                 }
             }
         }
@@ -129,7 +155,7 @@ fun MapScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(shown, key = { it.uid }) { f ->
                         Card(
-                            Modifier.clickable { selectedUid = f.uid; centerUid = f.uid },
+                            Modifier.clickable { onFollow(f) },
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             elevation = CardDefaults.cardElevation(4.dp),

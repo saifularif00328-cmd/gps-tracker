@@ -146,6 +146,7 @@ private fun MainScaffold(vm: AppViewModel) {
     val chatWith by vm.chatWith.collectAsState()
     val messages by vm.messages.collectAsState()
     val sosPrompt by vm.sosPrompt.collectAsState()
+    val pingedAt by vm.pingedAt.collectAsState()
     val guideHidden by vm.prefs.guideHiddenFlow.collectAsState(initial = true)
     val followHintSeen by vm.prefs.followHintFlow.collectAsState(initial = true)
     val friendsHintSeen by vm.prefs.friendsHintFlow.collectAsState(initial = true)
@@ -164,6 +165,11 @@ private fun MainScaffold(vm: AppViewModel) {
     var bgOk by remember { mutableStateOf(granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION) || Build.VERSION.SDK_INT < 29) }
     var explain by remember { mutableStateOf(false) }
     var explainBg by remember { mutableStateOf(false) }
+    var explainBattery by remember { mutableStateOf(false) }
+    val batteryAsked by vm.prefs.batteryAskedFlow.collectAsState(initial = true)
+    LaunchedEffect(fineOk, bgOk, batteryAsked) {
+        if (fineOk && bgOk && !batteryAsked && !isIgnoringBattery(context)) explainBattery = true
+    }
 
     val bgLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { bgOk = it }
     val fineLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
@@ -191,6 +197,21 @@ private fun MainScaffold(vm: AppViewModel) {
             }) { Text("Lanjut") }
         },
         dismissButton = { TextButton(onClick = { explain = false }) { Text("Nanti") } },
+    )
+    if (explainBattery) AlertDialog(
+        onDismissRequest = { explainBattery = false; scope.launch { vm.prefs.setBatteryAsked() } },
+        title = { Text("Jaga aplikasi tetap aktif") },
+        text = { Text("Agar lokasi Anda tetap terkirim saat layar mati dan teman tidak melihat Anda offline, izinkan aplikasi berjalan tanpa pembatasan baterai. Anda bisa mengubahnya lagi di tab Profil.") },
+        confirmButton = {
+            TextButton(onClick = {
+                explainBattery = false
+                scope.launch { vm.prefs.setBatteryAsked() }
+                requestIgnoreBattery(context)
+            }) { Text("Izinkan") }
+        },
+        dismissButton = {
+            TextButton(onClick = { explainBattery = false; scope.launch { vm.prefs.setBatteryAsked() } }) { Text("Nanti") }
+        },
     )
     if (explainBg) AlertDialog(
         onDismissRequest = { explainBg = false },
@@ -274,7 +295,10 @@ private fun MainScaffold(vm: AppViewModel) {
             when (tab) {
                 Tab.MAP ->
                     if (followUid != null) FollowScreen(friends, followUid, onPick = vm::follow)
-                    else MapScreen(friends, onFollow = { vm.follow(it.uid) }, onOpenGuide = { guideOpen = true }, onSos = { vm.sosPrompt.value = true })
+                    else MapScreen(friends, onFollow = { vm.follow(it.uid) }, onOpenGuide = { guideOpen = true }, onSos = { vm.sosPrompt.value = true },
+                        sharing = me?.isSharing() == true,
+                        onToggleSharing = { vm.setSharing(me?.isSharing() != true, 0L) },
+                    )
                 Tab.FRIENDS -> {
                     val chatFriend = friends.firstOrNull { it.uid == chatWith && it.status == "accepted" }
                     if (chatFriend != null) {
@@ -295,6 +319,9 @@ private fun MainScaffold(vm: AppViewModel) {
                             onFollow = { vm.follow(it.uid); tab = Tab.MAP },
                             onFavorite = vm::setFavorite, onGroup = vm::setGroup,
                             onChat = { vm.openChat(it.uid) }, onPing = vm::pingFriend,
+                            onSetSharing = { on, ms -> vm.setSharing(on, ms) },
+                            pingedAt = pingedAt,
+                            onToast = vm::toast,
                         )
                     }
                 }
@@ -307,9 +334,30 @@ private fun MainScaffold(vm: AppViewModel) {
                     me,
                     onSetSharing = { on, ms -> vm.setSharing(on, ms) },
                     onOpenGuide = { guideOpen = true },
+                    onKeepAlive = { requestIgnoreBattery(context) },
                     onSignOut = { LocationService.stop(context); vm.signOut() },
                 )
             }
+        }
+    }
+}
+
+private fun isIgnoringBattery(context: android.content.Context): Boolean {
+    val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@android.annotation.SuppressLint("BatteryLife")
+private fun requestIgnoreBattery(context: android.content.Context) {
+    val direct = android.content.Intent(
+        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        android.net.Uri.parse("package:${context.packageName}"),
+    )
+    try {
+        context.startActivity(direct)
+    } catch (e: Exception) {
+        runCatching {
+            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 }

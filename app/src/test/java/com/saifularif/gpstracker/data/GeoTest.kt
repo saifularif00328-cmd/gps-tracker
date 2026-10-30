@@ -92,4 +92,26 @@ class GeoTest {
         assertEquals(chatIdOf("bob", "alice"), chatIdOf("alice", "bob"))
         assertEquals("alice_bob", chatIdOf("bob", "alice"))
     }
+
+    @Test fun friend_offlineAfterFiveMinutes() {
+        val now = 10_000_000L
+        val f = Friend("u", "Budi", "accepted", lat = 1.0, lng = 2.0, updatedAt = now - 4 * 60_000L)
+        assertEquals(FriendState.STILL, f.state(now))
+        assertEquals(FriendState.OFFLINE, f.copy(updatedAt = now - 6 * 60_000L).state(now))
+    }
+
+    @Test fun offlineHint_onlyWhenOffline() {
+        val now = 10_000_000L
+        val online = Friend("u", "Budi", "accepted", lat = 1.0, lng = 2.0, updatedAt = now)
+        assertNull(online.offlineHint(now))
+        assertNotNull(online.copy(updatedAt = now - 10 * 60_000L).offlineHint(now))
+        assertTrue(Friend("u", "Budi", "accepted").offlineHint(now)!!.contains("Belum pernah"))
+    }
+
+    @Test fun sharingText_states() {
+        val now = 1_000L
+        assertTrue(Profile(shareEnabled = false).sharingText(now).startsWith("Mati"))
+        assertTrue(Profile(shareEnabled = true, pausedUntil = now + 3_600_000L).sharingText(now).startsWith("Dijeda"))
+        assertTrue(Profile(shareEnabled = true).sharingText(now).startsWith("Aktif"))
+    }
 }

@@ -17,6 +17,7 @@ class Prefs(private val context: Context) {
     private val friendsHint = booleanPreferencesKey("friends_hint_seen")
     private val eventsSeen = longPreferencesKey("events_seen_ts")
     private val msgSeen = longPreferencesKey("msg_seen_ts")
+    private val batteryAsked = booleanPreferencesKey("battery_asked")
 
     val onboardingDoneFlow: Flow<Boolean> = context.store.data.map { it[onboardingDone] ?: false }
     val guideHiddenFlow: Flow<Boolean> = context.store.data.map { it[guideHidden] ?: false }
@@ -24,6 +25,9 @@ class Prefs(private val context: Context) {
     val friendsHintFlow: Flow<Boolean> = context.store.data.map { it[friendsHint] ?: false }
 
     val eventsSeenFlow: Flow<Long> = context.store.data.map { it[eventsSeen] ?: 0L }
+
+    val batteryAskedFlow: Flow<Boolean> = context.store.data.map { it[batteryAsked] ?: false }
+    suspend fun setBatteryAsked() = context.store.edit { it[batteryAsked] = true }
 
     val msgSeenFlow: Flow<Long> = context.store.data.map { it[msgSeen] ?: 0L }
     suspend fun setMsgSeen(ts: Long) = context.store.edit { it[msgSeen] = ts }

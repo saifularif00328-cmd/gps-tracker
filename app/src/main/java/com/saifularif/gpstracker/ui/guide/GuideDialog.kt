@@ -54,10 +54,10 @@ private data class GuidePage(val icon: ImageVector, val title: String, val body:
 private val pages = listOf(
     GuidePage(Icons.Default.Group, "1. Undang teman", "Buka tab Teman, bagikan kode 6 karakter Anda atau masukkan kode/username teman. Lokasi baru terlihat setelah teman menyetujui."),
     GuidePage(Icons.Default.Place, "2. Lihat di peta", "Hijau = bergerak (lengkap dengan km/j). Oranye = diam (ada lama diam). Abu-abu = offline atau HP mati."),
-    GuidePage(Icons.Default.Navigation, "3. Ikuti teman", "Ketuk teman di peta lalu tekan Ikuti. Kamera mengikuti dan jejak rutenya digambar."),
+    GuidePage(Icons.Default.Navigation, "3. Ikuti teman", "Ketuk kartu teman (di Peta bagian bawah atau di tab Teman) untuk langsung mengikuti. Kamera mengikuti dan jejak rutenya digambar. Teman yang offline diikuti di lokasi terakhirnya."),
     GuidePage(Icons.Default.History, "4. Riwayat & favorit", "Tab Riwayat menyimpan perjalanan 7 hari dan bisa diputar ulang. Beri bintang pada teman penting dan atur grup (Keluarga, Kantor) lalu saring di peta."),
     GuidePage(Icons.Default.Home, "5. Tempat & kabar teman", "Di tab Tempat simpan Rumah/Kantor saat Anda berada di sana. Teman yang Anda setujui diberi tahu saat Anda tiba atau pergi, begitu juga sebaliknya."),
-    GuidePage(Icons.Default.Chat, "6. Chat, suara & SOS", "Di tab Teman ketuk ikon chat: kirim teks, atau tahan tombol mic untuk pesan suara (maks 30 detik). Ikon target meminta teman memperbarui lokasi. Tombol merah di Peta mengirim SOS beserta lokasi ke semua teman."),
+    GuidePage(Icons.Default.Chat, "6. Chat, suara & SOS", "Di tab Teman ketuk ikon chat: kirim teks, atau tahan tombol mic untuk pesan suara (maks 30 detik). Tombol \"Minta aktifkan\" meminta teman menyalakan berbagi lokasi: ia menerima notifikasi dan cukup ketuk Nyalakan. Tombol merah di Peta mengirim SOS beserta lokasi ke semua teman."),
     GuidePage(Icons.Default.Lock, "7. Atur privasi", "Di tab Profil Anda bisa mematikan atau menjeda berbagi lokasi (1 jam / 8 jam) kapan saja. Teman bisa dihapus kapan saja."),
     GuidePage(Icons.Default.BatteryChargingFull, "8. Jaga tetap aktif", "Pilih izin lokasi \"Selalu\". Di HP Xiaomi/Oppo/Vivo: Pengaturan > Baterai > GPS-Tracker > Tanpa batasan, dan kunci aplikasi di menu aplikasi terbaru."),
 )

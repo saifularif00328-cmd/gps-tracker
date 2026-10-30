@@ -38,7 +38,7 @@ data class Friend(
     val speedKmh get() = speedMps * 3.6
 
     companion object {
-        const val OFFLINE_AFTER_MS = 3 * 60_000L
+        const val OFFLINE_AFTER_MS = 5 * 60_000L
         const val MOVING_SPEED_MPS = 1.0
     }
 }
@@ -99,3 +99,15 @@ data class Message(
 
 /** ID chat simetris: dua uid diurutkan lalu digabung dengan "_". */
 fun chatIdOf(a: String, b: String): String = listOf(a, b).sorted().joinToString("_")
+
+/** Teks bantuan untuk teman yang tampil offline. */
+fun Friend.offlineHint(now: Long = System.currentTimeMillis()): String? =
+    if (state(now) != FriendState.OFFLINE) null
+    else if (!hasLocation) "Belum pernah membagikan lokasi. Mintalah ia menyalakan berbagi lokasi."
+    else "Mungkin berbagi dimatikan, HP tanpa internet, atau aplikasi ditutup sistem. Ketuk \"Minta aktifkan\" agar ia bisa menyalakannya."
+
+fun Profile.sharingText(now: Long = System.currentTimeMillis()): String = when {
+    !shareEnabled -> "Mati. Tidak ada yang bisa melihat Anda."
+    pausedUntil > now -> "Dijeda, lanjut dalam ${formatDuration(pausedUntil - now)}."
+    else -> "Aktif untuk teman yang disetujui."
+}

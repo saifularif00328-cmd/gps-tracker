@@ -144,6 +144,7 @@ class LocationService : Service() {
         if (sharing) {
             startInForeground("Lokasi sedang dibagikan", "Teman yang Anda setujui dapat melihat posisi Anda")
             requestUpdates(moving = false, force = true)
+            if (!wasSharing) respondToPing() // kirim posisi segar begitu berbagi dinyalakan
         } else {
             client.removeLocationUpdates(callback)
             movingMode = null
@@ -241,13 +242,16 @@ class LocationService : Service() {
         var newest = msgSeenTs
         messages.sortedBy { it.ts }.forEach { m ->
             if (m.from == myUid || m.ts <= msgSeenTs || !notified.add("m-" + m.id)) return@forEach
+            if (m.type == "ping") {
+                handlePing(friendUid, name, m.id)
+                if (m.ts > newest) newest = m.ts
+                return@forEach
+            }
             val text = when (m.type) {
                 "text" -> "$name: ${m.text}"
                 "voice" -> "$name mengirim pesan suara"
-                "ping" -> "$name meminta lokasi Anda diperbarui"
                 else -> return@forEach
             }
-            if (m.type == "ping") respondToPing()
             val open = PendingIntent.getActivity(
                 this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
             )
@@ -267,6 +271,47 @@ class LocationService : Service() {
             msgSeenTs = newest
             scope.launch { prefs.setMsgSeen(newest) }
         }
+    }
+
+    /**
+     * Ping: bila berbagi aktif langsung kirim lokasi segar; bila mati/dijeda tampilkan notifikasi
+     * dengan pilihan Nyalakan / Tidak (lokasi tidak pernah bocor tanpa persetujuan).
+     */
+    private fun handlePing(friendUid: String, name: String, messageId: String) {
+        if (me?.isSharing() == true) {
+            respondToPing()
+            return
+        }
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_MESSAGES, "Pesan", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val notifId = messageId.hashCode()
+        fun action(code: Int, name: String) = PendingIntent.getBroadcast(
+            this, notifId + code,
+            Intent(this, ShareActionReceiver::class.java)
+                .setAction(name)
+                .putExtra(ShareActionReceiver.EXTRA_NOTIF, notifId)
+                .putExtra(ShareActionReceiver.EXTRA_FRIEND, friendUid),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
+        )
+        nm.notify(
+            notifId,
+            NotificationCompat.Builder(this, CHANNEL_MESSAGES)
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setContentTitle("$name meminta lokasi Anda")
+                .setContentText("Berbagi lokasi Anda sedang mati. Nyalakan agar $name bisa melihat posisi Anda?")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("Berbagi lokasi Anda sedang mati. Nyalakan agar $name bisa melihat posisi Anda?"))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(open)
+                .addAction(0, "Nyalakan", action(1, ShareActionReceiver.ACTION_ENABLE))
+                .addAction(0, "Tidak", action(2, ShareActionReceiver.ACTION_DECLINE))
+                .build()
+        )
     }
 
     /** Ping hanya dijawab bila berbagi aktif, sehingga tidak membocorkan lokasi saat berbagi mati. */

@@ -35,6 +35,7 @@ fun ProfileScreen(
     me: Profile?,
     onSetSharing: (enabled: Boolean, pauseMs: Long) -> Unit,
     onOpenGuide: () -> Unit,
+    onKeepAlive: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val now = System.currentTimeMillis()
@@ -75,6 +76,9 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+        OutlinedButton(onClick = onKeepAlive, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("Jaga tetap aktif (izin baterai)")
         }
         OutlinedButton(onClick = onOpenGuide, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) {
             Text("Petunjuk Pemakaian")
