@@ -18,10 +18,9 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Uji aturan Firestore (emulator)
-        working-directory: firestore-tests
         run: |
-          npm install --no-audit --no-fund
-          npx firebase emulators:exec --only firestore --project gps-tracker-rules-test "npm test"
+          npm install --prefix firestore-tests --no-audit --no-fund
+          firestore-tests/node_modules/.bin/firebase emulators:exec --only firestore --project gps-tracker-rules-test "npm test --prefix firestore-tests"
 
   build:
     runs-on: ubuntu-latest
